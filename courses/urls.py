@@ -9,10 +9,10 @@ from .views import (
     LessonUpdateAPIView,
     LessonDestroyAPIView,
 )
-
+from .views import PaymentViewSet
 router = DefaultRouter()
 router.register(r'', CourseViewSet, basename='course')
-
+router.register(r'payments', PaymentViewSet, basename='payment')
 app_name = CoursesConfig.name
 urlpatterns = [
     path('', include(router.urls)),  # CRUD для курсов
