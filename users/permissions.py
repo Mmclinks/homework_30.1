@@ -1,4 +1,3 @@
-from rest_framework.permissions import BasePermission
 from rest_framework.permissions import BasePermission, SAFE_METHODS
 
 
@@ -15,7 +14,8 @@ class IsOwnerOrReadOnly(BasePermission):
     """
     Права доступа, позволяющие редактировать и удалять только свои объекты.
     """
+
     def has_object_permission(self, request, view, obj):
-        if request.method in SAFE_METHODS:
+        if obj.owner == request.user:
             return True
-        return obj.author == request.user  # Проверяем, является ли пользователь владельцем
+        return False

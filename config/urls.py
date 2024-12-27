@@ -7,10 +7,3 @@ urlpatterns = [
     # path('api/', include('rest_framework.urls')),  # Если вы используете DRF
     path('users/', include('users.urls', namespace='users')),
 ]
-
-
-
-
-
-
-
