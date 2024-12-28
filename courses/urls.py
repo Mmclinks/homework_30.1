@@ -4,7 +4,7 @@ from . import views
 from .apps import CoursesConfig
 from .views import (CourseViewSet, LessonCreateAPIView, LessonDestroyAPIView,
                     LessonListAPIView, LessonRetrieveAPIView,
-                    LessonUpdateAPIView, PaymentViewSet, SubscriptionAPIView)
+                    LessonUpdateAPIView, PaymentViewSet, SubscriptionAPIView, PaymentStatusView)
 
 app_name = CoursesConfig.name
 
@@ -21,4 +21,7 @@ urlpatterns = [
     path("subscribe/", SubscriptionAPIView.as_view(), name="subscribe"),
     path('lessons/<int:pk>/update/', LessonUpdateAPIView.as_view(), name='lesson-update'),
     path('lessons/<int:pk>/delete/', LessonDestroyAPIView.as_view(), name='lesson-delete'),
+
+    path('payment/create/', PaymentViewSet.as_view({'post': 'create'}), name='create_payment'),
+    path('payment/status/<str:session_id>/', PaymentStatusView.as_view(), name='payment_status'),
 ] + router.urls

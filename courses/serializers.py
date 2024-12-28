@@ -21,8 +21,15 @@ class CourseSerializer(serializers.ModelSerializer):
         return obj.lessons.count()
 
 
-
 class PaymentSerializer(serializers.ModelSerializer):
     class Meta:
         model = Payment
-        fields = ['id', 'user', 'course', 'lesson', 'amount', 'payment_method', 'date']
+        fields = [
+            'id',
+            'user',
+            'paid_course',  # Исправлено с 'course'
+            'paid_lesson',  # Исправлено с 'lesson'
+            'amount',
+            'payment_method',
+            'payment_date'  # Исправлено с 'date'
+        ]

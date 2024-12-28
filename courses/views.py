@@ -1,23 +1,25 @@
 from django.shortcuts import get_object_or_404
-from django_filters.rest_framework import DjangoFilterBackend
-from rest_framework import viewsets, generics
-from rest_framework.filters import OrderingFilter
-from rest_framework.generics import (CreateAPIView, DestroyAPIView,
-                                     ListAPIView, RetrieveAPIView,
-                                     UpdateAPIView)
+
+from rest_framework import viewsets, generics, status
+
+from rest_framework.generics import (DestroyAPIView, RetrieveAPIView, UpdateAPIView)
 from rest_framework.permissions import IsAuthenticated
-from rest_framework.response import Response
 from rest_framework.status import HTTP_400_BAD_REQUEST, HTTP_200_OK
-from rest_framework.views import APIView
 from rest_framework.viewsets import ModelViewSet
 from django_filters import rest_framework as filters
 
 from users import permissions
-from users.models import Payment
 from users.permissions import IsModerator, IsOwnerOrReadOnly
 from .models import Course, Lesson, Subscription
 from .paginators import StandardResultsSetPagination
-from .serializers import CourseSerializer, LessonSerializer, PaymentSerializer
+from .serializers import CourseSerializer, LessonSerializer
+from django.conf import settings
+import stripe
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from users.models import Payment
+from .serializers import PaymentSerializer
+from .service import create_product, create_price, create_checkout_session
 
 
 class CourseViewSet(viewsets.ModelViewSet):
@@ -114,19 +116,45 @@ class PaymentFilter(filters.FilterSet):
         fields = ['course', 'lesson', 'payment_method', 'date']
 
 
+stripe.api_key = settings.STRIPE_API_KEY
+
 
 class PaymentViewSet(ModelViewSet):
-    """
-    ViewSet для работы с платежами.
-    """
-
     queryset = Payment.objects.select_related("user", "course", "lesson")
     serializer_class = PaymentSerializer
 
-    filter_backends = [DjangoFilterBackend, OrderingFilter]
-    filterset_class = PaymentFilter
-    ordering_fields = ["date"]
-    ordering = ["-date"]
+    def create(self, request, *args, **kwargs):
+        course_id = request.data.get('course_id')
+        if not course_id:
+            return Response({"error": "course_id is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        course = get_object_or_404(Course, id=course_id)
+
+        # Создаем продукт в Stripe
+        stripe_product = create_product(course)
+        product_id = stripe_product['id']
+
+        # Создаем цену для продукта в Stripe
+        price = create_price(product_id, int(course.price * 100))  # Цена в копейках
+        price_id = price['id']
+
+        # Создаем сессию для оплаты через Stripe
+        session = create_checkout_session(price_id, success_url="https://yourdomain.com/success/",
+                                          cancel_url="https://yourdomain.com/cancel/")
+
+        # Сохраняем данные о платеже в базе
+        payment = Payment.objects.create(
+            user=request.user,
+            course=course,
+            stripe_session_id=session['id'],
+            stripe_price_id=price_id,
+            payment_url=session['url'],
+            amount=course.price,
+            status="pending"  # Можно обновлять позже по статусу сессии
+        )
+
+        # Отправляем пользователю ссылку для оплаты
+        return Response({"payment_url": session['url']}, status=status.HTTP_200_OK)
 
 
 class SubscriptionAPIView(APIView):
@@ -153,3 +181,20 @@ class SubscriptionAPIView(APIView):
             message = "Подписка добавлена"
 
         return Response({"message": message}, status=HTTP_200_OK)
+
+
+class PaymentStatusView(APIView):
+    """
+    Просмотр статуса платежа через Stripe.
+    """
+
+    def get(self, request, session_id, *args, **kwargs):
+        # Получаем статус сессии через Stripe
+        session = stripe.checkout.Session.retrieve(session_id)
+
+        # Обновляем статус платежа в нашей системе
+        payment = Payment.objects.get(stripe_session_id=session_id)
+        payment.status = session['payment_status']
+        payment.save()
+
+        return Response({"status": session['payment_status']}, status=status.HTTP_200_OK)
